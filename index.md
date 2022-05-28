@@ -7,12 +7,10 @@ title: "Hashlog"
 <script>
 
         function run() {
-            await init();
             var query = document.getElementById("query").value;
             const result = Hashlog.run_string(query);
             console.log(result);
             document.getElementById("result").value = result;
-
         }
         window.run = run;
         //run();
