@@ -1,0 +1,11 @@
+lib: [
+  "_build/install/default/lib/hashlog/META"
+  "_build/install/default/lib/hashlog/dune-package"
+  "_build/install/default/lib/hashlog/opam"
+]
+bin: [
+  "_build/install/default/bin/hashlog"
+]
+doc: [
+  "_build/install/default/doc/hashlog/README.md"
+]
