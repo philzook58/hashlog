@@ -1,0 +1,6 @@
+(executable
+ (public_name hashlog)
+ (name main)
+ (libraries core hashlog)
+ (preprocess
+  (pps ppx_jane)))

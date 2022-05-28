@@ -1,0 +1,10 @@
+
+edge(1,2).
+edge(2,3).
+edge(3,4).
+
+path(I,J) :- edge(I,J).
+path(I,K) :- edge(I,J), path(J,K).
+
+% special output relation
+output(path(I,J)) :- path(I,J).

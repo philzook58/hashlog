@@ -1,0 +1,12 @@
+(library
+ (name hashlog)
+ (libraries core_kernel)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane)))
+
+(ocamllex
+ (modules Lexer))
+
+(ocamlyacc
+ (modules Parser))
