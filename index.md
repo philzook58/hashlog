@@ -8,7 +8,7 @@ title: "Hashlog"
 <script>
 function run() {
     var query = document.getElementById("query").value;
-    const result = Hashlog.run_string(query);
+    const result = Hashlog.runhashlog(query);
     console.log(result);
     document.getElementById("result").value = result;
 }
