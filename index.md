@@ -3,7 +3,7 @@ title: "Hashlog"
 ---
 
 ## Try It Out!
-<script src="egglog/main.bc.js">
+<script src="/hashlog/main.bc.js">
 <script>
 
         function run() {
