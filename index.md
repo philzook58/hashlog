@@ -3,20 +3,18 @@ title: "Hashlog"
 ---
 
 ## Try It Out!
-<script src="/hashlog/main.bc.js">
-<script>
-
-        function run() {
-            var query = document.getElementById("query").value;
-            const result = Hashlog.run_string(query);
-            console.log(result);
-            document.getElementById("result").value = result;
-        }
-        window.run = run;
-        //run();
-</script>
+<script src="/hashlog/main.bc.js"> </script>
 
 <script>
+function run() {
+    var query = document.getElementById("query").value;
+    const result = Hashlog.run_string(query);
+    console.log(result);
+    document.getElementById("result").value = result;
+}
+//window.run = run;
+//run();
+
 function pickerbox(select){
     var xhr = new XMLHttpRequest();
     xhr.open('GET', `/hashlog/test/${select.value}`, true);
