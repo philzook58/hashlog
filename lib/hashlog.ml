@@ -22,10 +22,16 @@ Can
 
 *)
 
-type hash_consed = { node : Term.t; tag : int; hkey : int }
+(* type hash_consed = { node : Term.t; tag : int; hkey : int } *)
 
 (* Var | Lam | App *)
 let table = Hashtbl.create (module Term)
+let clear () = Hashtbl.clear table
+
+(* 
+It's nice to have table as implicit in everything
+type db = (Term.t, Term.t) Hashtbl.t
+let mk_db : db = Hashtbl.create (module Term) *)
 
 let apply head args =
   let x : Term.t = Apply { head; args } in
@@ -50,6 +56,10 @@ type patterm =
 
 type env = Term.t String.Map.t
 
+(*
+Intrinsic functions
+"=" as a special case.   
+*)
 let rec pmatch (env : env) (p : AST.term) (t : Term.t) : env option =
   match (p, t) with
   | Apply (f, args'), Apply { head; args } ->
@@ -99,6 +109,37 @@ let run_loop (prog : clause list) =
     if Int.(n = n') then () else worker n'
   in
   worker (Hashtbl.length table)
+
+
+let strip_pos (file : AST.file) =
+    List.map file ~f:(fun (head, clauses) ->
+        ( head,
+          List.map clauses ~f:(fun lit ->
+              match lit with
+              | AST.LitPos p -> p
+              | _ -> failwith "not a positive literal") ))
+
+let run_file file = 
+  let file = strip_pos file in
+  run_loop file;
+  let envs =
+    search_pat String.Map.empty (AST.Apply ("output", [ AST.Var "o" ]))
+  in
+  List.iter envs ~f:(fun env ->
+      let t = String.Map.find_exn env "o" in
+      Format.fprintf Format.str_formatter "%a\n" Term.pp_term t);
+  Format.flush_str_formatter ()
+
+
+let from_string (prog : string) = 
+  clear ();
+  let lexbuf = Lexing.from_string prog in
+  Parser.parse_file Lexer.token lexbuf
+
+
+let run_string (prog : string) = 
+  run_file (from_string prog)
+
 
 (*
 Doing it as an embedded DSL.   
