@@ -9,6 +9,41 @@ type ln_pat =
   | Lam of ln
   | PVar of string
 
+  let rec varopen k e (t : ln) = match t with
+  | FVar _ -> t
+  | BVar i -> if Int.(i = k) then e else t
+  | App (f,y) -> App (varopen k x f, varopen k x y)
+  | Lam body -> Lam (varopen (k + 1) x body)
+ 
+ let instantiate (e : ln) (t : scope) = varopen 0 e t 
+ 
+ let rec varclose k x (t : ln) : ln = match t with
+  | FVar x' -> if String.(x = x') then BVar k else t
+  | BVar i -> t
+  | App (f,y) -> App (varclose k x f, varclose k x y)
+  | Lam body -> Lam (varclose (k + 1) x body)
+ 
+ let abstract (x : string) t : ln =
+   varclose 0 x t
+(*
+let rec alphamatch ln ln_pat = 
+  let (let* ) f x = Option.bind x ~f in
+    match ln, ln_pat with
+    | FVar s, FVar s' -> String.(s = s') then Some env else None
+    | BVar i, _ -> failwith "shouldn't hit a bound var"
+    | Lam b, Lam b' -> 
+      let v = FVar (fresh ()) in  
+      let* env = alphamatch env (instantiate v b) (instantiate v b') in
+      String.Map.map env ~f:(fun t -> abstract v t)
+    | App (f, x), App (f', x') ->
+        let* env = Option.bind (alphamatch env f f') in
+        alphamatch env x x'
+    | _ , PVar p -> 
+       match String.find env p with
+       | None -> Some (String.Map.add env p ln)
+       | Some e' -> if (ln = e') then Some env else None
+
+       *)
 (*
 Abstractions is picking all possible ways to abstract out subterm e
 It is a relative of varclose
@@ -58,22 +93,7 @@ let rec pmatch ln ln_pat =
 
 
 
-let rec varopen k e (t : ln) = match t with
- | FVar _ -> t
- | BVar i -> if Int.(i = k) then e else t
- | App (f,y) -> App (varopen k x f, varopen k x y)
- | Lam body -> Lam (varopen (k + 1) x body)
 
-let instantiate (e : ln) (t : scope) = varopen 0 e t 
-
-let rec varclose k x (t : ln) : ln = match t with
- | FVar x' -> if String.(x = x') then BVar k else t
- | BVar i -> t
- | App (f,y) -> App (varclose k x f, varclose k x y)
- | Lam body -> Lam (varclose (k + 1) x body)
-
-let abstract (x : string) t : ln =
-  varclose 0 x t
 
 (*
  type expr = Var of string
