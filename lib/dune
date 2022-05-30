@@ -1,6 +1,6 @@
 (library
  (name hashlog)
- (libraries core_kernel)
+ (libraries core_kernel hashcons)
  (inline_tests)
  (preprocess
   (pps ppx_jane)))

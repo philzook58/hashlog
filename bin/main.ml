@@ -1,8 +1,6 @@
 open Core
 open Hashlog
 
-
-
 let main filename =
   (* print_endline filename; *)
   In_channel.with_file filename ~f:(fun chan ->
@@ -10,7 +8,6 @@ let main filename =
       let file = Parser.parse_file Lexer.token lexbuf in
       let output = run_file file in
       print_endline output)
-
 
 let regular_file =
   Command.Arg_type.create (fun filename ->
