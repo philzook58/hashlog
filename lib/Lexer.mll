@@ -48,6 +48,7 @@ rule token =
       | ":-"                         { IF }
       | "<-"                         { IF }
       | ","                          { COMMA }
+      | "\\"                         { BACKSLASH }
       | lower_word                   { LOWER_WORD(Lexing.lexeme lexbuf) }
       | upper_word                   { UPPER_WORD(Lexing.lexeme lexbuf) }
       | single_quoted                { SINGLE_QUOTED(Lexing.lexeme lexbuf) }

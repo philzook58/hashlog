@@ -20,6 +20,7 @@ this file is part of datalog. See README for the license
 %token COMMA
 %token AGGR_EQUAL
 %token EQUAL
+%token BACKSLASH
 %token EOI
 %token <string> SINGLE_QUOTED
 %token <string> DOUBLE_QUOTED
@@ -96,8 +97,9 @@ term:
   | SINGLE_QUOTED { AST.Apply (remove_quotes $1, []) }
   | DOUBLE_QUOTED { AST.Apply (remove_quotes $1, []) }
   /* | term EQUAL term { AST.Apply("=", [$1; $3]) } */
-  | LOWER_WORD LEFT_PARENTHESIS args RIGHT_PARENTHESIS
-    { AST.Apply ($1, $3) }
+  | LOWER_WORD LEFT_PARENTHESIS args RIGHT_PARENTHESIS { AST.Apply ($1, $3) }
+  | LOWER_WORD BACKSLASH subterm { AST.Apply("\\", [AST.Apply ($1, []); $3]) }
+
 
 subterm:
   | term { $1 }

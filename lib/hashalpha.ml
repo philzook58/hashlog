@@ -1,4 +1,5 @@
 (* https://chargueraud.org/research/2009/ln/main.pdf *)
+
 open Core_kernel
 
 type ln =
@@ -6,19 +7,24 @@ type ln =
   | FVarI of int
   | BVar of int
   | App of ln * ln
-  | Lam of ln
+  | Lam of scope
 [@@deriving equal, compare, sexp, hash]
 
-type scope = ln
+and scope = { scope : ln } [@@deriving equal, compare, sexp, hash]
 
 let print_ln t = Sexp.pp_hum Format.std_formatter (sexp_of_ln t)
 
+type bf = Bound of int | Free of int
+
 type ln_pat =
-  | FVar of string
-  | BVar of int
-  | App of ln * ln
-  | Lam of ln
-  | PVar of string
+  | PFVar of string
+  | PFVarI of int
+  | PBVar of int
+  | PApp of ln_pat * ln_pat
+  | PLam of scope_pat
+  | PVar of string * bf list
+
+and scope_pat = { scope : ln_pat }
 
 let rec varopen k e (t : ln) =
   match t with
@@ -26,26 +32,53 @@ let rec varopen k e (t : ln) =
   | FVarI _ -> t
   | BVar i -> if Int.(i = k) then e else t
   | App (f, y) -> App (varopen k e f, varopen k e y)
-  | Lam body -> Lam (varopen (k + 1) e body)
+  | Lam body -> Lam { scope = varopen (k + 1) e body.scope }
 
-let instantiate (e : ln) (t : scope) = varopen 0 e t
+let instantiate (e : ln) (t : scope) : ln = varopen 0 e t.scope
+
+let rec pvaropen k e (t : ln_pat) =
+  match t with
+  | PFVar _ -> t
+  | PFVarI _ -> t
+  | PBVar i -> if Int.(i = k) then e else t
+  | PApp (f, y) -> PApp (pvaropen k e f, pvaropen k e y)
+  | PLam body -> PLam { scope = pvaropen (k + 1) e body.scope }
+  | PVar (p, args) ->
+      PVar
+        ( p,
+          List.map
+            ~f:(fun a ->
+              match a with
+              | Bound i ->
+                  if Int.(i = k) then
+                    match e with
+                    | PFVarI j -> Free j
+                    | _ ->
+                        failwith
+                          "tried to instantiate PVar with something not \
+                           variable."
+                  else a
+              | Free _ -> a)
+            args )
+
+let pinstantiate (e : ln_pat) (t : scope_pat) : ln_pat = pvaropen 0 e t.scope
 
 let rec varclose k x (t : ln) : ln =
   match t with
   | FVar x' -> if String.(x = x') then BVar k else t
   | FVarI _ -> t
-  | BVar _i -> t
+  | BVar _ -> t
   | App (f, y) -> App (varclose k x f, varclose k x y)
-  | Lam body -> Lam (varclose (k + 1) x body)
+  | Lam body -> Lam { scope = varclose (k + 1) x body.scope }
 
 let rec varclose' k x (t : ln) : ln =
   match t with
   | FVarI x' -> if Int.(x = x') then BVar k else t
   | App (f, y) -> App (varclose' k x f, varclose' k x y)
-  | Lam body -> Lam (varclose' (k + 1) x body)
+  | Lam body -> Lam { scope = varclose' (k + 1) x body.scope }
   | _ -> t
 
-let abstract (x : string) t : ln = varclose 0 x t
+let abstract (x : string) (t : ln) : scope = { scope = varclose 0 x t }
 
 let fresh =
   let count = ref 0 in
@@ -54,11 +87,12 @@ let fresh =
     count := c + 1;
     c
 
-let abstract' (x : int) t : ln = varclose' 0 x t
+let abstract' (x : int) (t : ln) : scope = { scope = varclose' 0 x t }
 
 let lam f =
   let x = fresh () in
-  abstract' x (f (FVarI x))
+  let t = abstract' x (f (FVarI x)) in
+  Lam t
 
 (*
 let rec norm (t : ln) : ln =
@@ -85,9 +119,63 @@ let rec norm (t : ln) : ln =
   | _ -> t
 
 let%expect_test _ =
-  let f = lam (fun x -> x) in
-  print_ln (norm (App (f, f)));
-  [%expect {| (App (BVar 0) (BVar 0)) |}]
+  let id = lam (fun x -> x) in
+  print_ln (norm (App (id, App (id, id))));
+  [%expect {| (Lam ((scope (BVar 0)))) |}]
+
+let%expect_test _ =
+  let t = lam (fun x -> lam (fun _y -> x)) in
+  let f = lam (fun _x -> lam (fun y -> y)) in
+  print_ln (norm (App (App (t, f), t)));
+  [%expect {| (Lam ((scope (Lam ((scope (BVar 0))))))) |}]
+
+let multiapp (e : ln) (args : ln list) =
+  List.fold args ~init:e ~f:(fun f x -> App (f, x))
+
+(* Abstract out the FVarI (turn into bvar) *)
+let multiabstract (t : ln) (args : bf list) =
+  List.fold ~init:t args ~f:(fun t i -> 
+    match i with
+    | Free i -> Lam (abstract' i t)
+    | Bound _ -> failwith "unexpect bound var in pattern")
+
+let check_open_bvars (t : ln) =
+  let rec worker k t =
+    match t with
+    | BVar i -> i >= k
+    | FVarI _ -> false
+    | FVar _ -> true
+    | App (f, x) -> worker k f && worker k x
+    | Lam b -> worker (k + 1) b.scope
+  in
+  worker 0 t
+
+let rec millermatch env ln ln_pat =
+  let ( let* ) x f = Option.bind x ~f in
+  match (ln, ln_pat) with
+  | FVar s, PFVar s' -> if String.(s = s') then Some env else None
+  | FVarI s, PFVarI s' -> if Int.(s = s') then Some env else None
+  | BVar _, _ -> failwith "shouldn't hit a bound var"
+  | Lam b, PLam b' ->
+      let v = fresh () in
+      let b = instantiate (FVarI v) b in
+      let b' = pinstantiate (PFVarI v) b' in
+      millermatch env b b'
+  | App (f, x), PApp (f', x') ->
+      let* env = millermatch env f f' in
+      millermatch env x x'
+  | _, PVar (p, args) -> (
+      (* args are de bruijn indices *)
+      match String.Map.find env p with
+      | None ->
+          let ln = multiabstract ln args in
+          if check_open_bvars ln then
+            Some (String.Map.add_exn env ~key:p ~data:ln)
+          else None
+      | Some f ->
+          let f = norm (multiapp f args) in
+          if equal_ln ln f then Some env else None)
+  | _, _ -> None
 (*
 
 sigma = signature?
