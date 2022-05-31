@@ -14,18 +14,6 @@ and scope = { scope : ln } [@@deriving equal, compare, sexp, hash]
 
 let print_ln t = Sexp.pp_hum Format.std_formatter (sexp_of_ln t)
 
-type bf = Bound of int | Free of int
-
-type ln_pat =
-  | PFVar of string
-  | PFVarI of int
-  | PBVar of int
-  | PApp of ln_pat * ln_pat
-  | PLam of scope_pat
-  | PVar of string * bf list
-
-and scope_pat = { scope : ln_pat }
-
 let rec varopen k e (t : ln) =
   match t with
   | FVar _ -> t
@@ -35,33 +23,6 @@ let rec varopen k e (t : ln) =
   | Lam body -> Lam { scope = varopen (k + 1) e body.scope }
 
 let instantiate (e : ln) (t : scope) : ln = varopen 0 e t.scope
-
-let rec pvaropen k e (t : ln_pat) =
-  match t with
-  | PFVar _ -> t
-  | PFVarI _ -> t
-  | PBVar i -> if Int.(i = k) then e else t
-  | PApp (f, y) -> PApp (pvaropen k e f, pvaropen k e y)
-  | PLam body -> PLam { scope = pvaropen (k + 1) e body.scope }
-  | PVar (p, args) ->
-      PVar
-        ( p,
-          List.map
-            ~f:(fun a ->
-              match a with
-              | Bound i ->
-                  if Int.(i = k) then
-                    match e with
-                    | PFVarI j -> Free j
-                    | _ ->
-                        failwith
-                          "tried to instantiate PVar with something not \
-                           variable."
-                  else a
-              | Free _ -> a)
-            args )
-
-let pinstantiate (e : ln_pat) (t : scope_pat) : ln_pat = pvaropen 0 e t.scope
 
 let rec varclose k x (t : ln) : ln =
   match t with
@@ -133,34 +94,38 @@ let multiapp (e : ln) (args : ln list) =
   List.fold args ~init:e ~f:(fun f x -> App (f, x))
 
 (* Abstract out the FVarI (turn into bvar) *)
-let multiabstract (t : ln) (args : bf list) =
-  List.fold ~init:t args ~f:(fun t i -> 
-    match i with
-    | Free i -> Lam (abstract' i t)
-    | Bound _ -> failwith "unexpect bound var in pattern")
+let multiabstract (t : ln) (args : int list) =
+  List.fold ~init:t args ~f:(fun t i -> Lam (abstract' i t))
 
-let check_open_bvars (t : ln) =
+let has_open_bvars (t : ln) =
   let rec worker k t =
     match t with
     | BVar i -> i >= k
-    | FVarI _ -> false
-    | FVar _ -> true
-    | App (f, x) -> worker k f && worker k x
+    | FVarI _ -> failwith "term shouldn't have FVar in it"
+    | FVar _ -> false
+    | App (f, x) -> worker k f || worker k x
     | Lam b -> worker (k + 1) b.scope
   in
   worker 0 t
 
+type ln_pat =
+  | PFVar of string
+  | PBVar of int
+  | PApp of ln_pat * ln_pat
+  | PLam of ln_pat
+  | PVar of string * int list
+(* The integers here are debruijn indices *)
+
+(*
+Match doesn't require doing locally nameless nonsense.   
+*)
 let rec millermatch env ln ln_pat =
   let ( let* ) x f = Option.bind x ~f in
   match (ln, ln_pat) with
   | FVar s, PFVar s' -> if String.(s = s') then Some env else None
-  | FVarI s, PFVarI s' -> if Int.(s = s') then Some env else None
-  | BVar _, _ -> failwith "shouldn't hit a bound var"
-  | Lam b, PLam b' ->
-      let v = fresh () in
-      let b = instantiate (FVarI v) b in
-      let b' = pinstantiate (PFVarI v) b' in
-      millermatch env b b'
+  | FVarI _, _ -> failwith "pattern shouldn't hit FVarI"
+  | BVar i, PBVar j -> if Int.(i = j) then Some env else None
+  | Lam b, PLam b' -> millermatch env b.scope b'
   | App (f, x), PApp (f', x') ->
       let* env = millermatch env f f' in
       millermatch env x x'
@@ -169,14 +134,39 @@ let rec millermatch env ln ln_pat =
       match String.Map.find env p with
       | None ->
           let ln = multiabstract ln args in
-          if check_open_bvars ln then
-            Some (String.Map.add_exn env ~key:p ~data:ln)
-          else None
+          if has_open_bvars ln then None
+          else Some (String.Map.add_exn env ~key:p ~data:ln)
       | Some f ->
-          let f = norm (multiapp f args) in
+          let f = norm (multiapp f (List.map ~f:(fun a -> BVar a) args)) in
           if equal_ln ln f then Some env else None)
   | _, _ -> None
+
+let%expect_test _ =
+  let t = lam (fun x -> lam (fun _y -> x)) in
+  let p = PLam (PLam (PVar ("F", [ 1; 0 ]))) in
+  let env = Option.value_exn (millermatch String.Map.empty t p) in
+  print_ln (String.Map.find_exn env "F");
+  [%expect {| (Lam ((scope (BVar 0)))) |}]
+
 (*
+@norm() as a built in functor.
+Makes sense.
+[ ; ; ; ] built in list syntax
+x :: xs
+[x,y | xs]
+ i \ j \ F(i,j)
+ ctx  = x \ y \ z \ ctx =>
+ :- x \ y \ z \ [student()  ; whatever() ; ] 
+ :- x \ y \ z \ {student() ;  } =>
+
+ { student, whateve  | S} =>
+x \ y \ z we need a way to pattern match over arbitrary lambda chain.
+{} first class set for program database.
+
+
+
+ Reuse elpi unifier?
+ Hashcons native lambdas?  
 
 sigma = signature?
 Go just de bruin?
